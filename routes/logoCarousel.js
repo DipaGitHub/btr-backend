@@ -69,6 +69,41 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * @route   PUT /api/logo-carousel/update/:id
+ * @desc    Update a logo and optionally replace its image
+ */
+router.put('/update/:id', upload.single('image'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title } = req.body;
+        const [existing] = await db.query('SELECT * FROM logo_carousel WHERE id = ?', [id]);
+        
+        if (existing.length === 0) {
+            if (req.file) fs.unlinkSync(req.file.path);
+            return res.status(404).json({ status: 404, error: 'Logo not found' });
+        }
+
+        let imageUrl = existing[0].image_url;
+        if (req.file) {
+            imageUrl = `/public/logos/${req.file.filename}`;
+            // Delete old image if it exists
+            const oldImagePath = path.join(__dirname, '..', existing[0].image_url);
+            if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
+        }
+
+        await db.query(
+            'UPDATE logo_carousel SET title = ?, image_url = ? WHERE id = ?',
+            [title || existing[0].title, imageUrl, id]
+        );
+
+        res.status(200).json({ status: 200, message: 'Logo updated successfully' });
+    } catch (error) {
+        if (req.file) fs.unlinkSync(req.file.path);
+        res.status(500).json({ status: 500, error: 'Update failed' });
+    }
+});
+
+/**
  * @route   DELETE /api/logo-carousel/:id
  * @desc    Delete a logo and its file
  */
