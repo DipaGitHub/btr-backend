@@ -35,6 +35,8 @@ app.use('/api/logo-carousel', require('./routes/logoCarousel'));
 app.use('/api/latestUpdates', require('./routes/latestUpdatesRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/email-config', require('./routes/emailConfigRoutes'));
+app.use('/api/ai', require('./routes/aiChatRoutes'));
+app.use('/api/ai/admin', require('./routes/aiAdminRoutes'));
 
 // --- Root Route / Health Check ---
 app.get('/', (req, res) => {
