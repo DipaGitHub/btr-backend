@@ -64,25 +64,32 @@ async function processChatMessage({ sessionId, message }) {
             tools: geminiTools
         });
 
-        // 5. Build recent history for Gemini (roles: 'user' | 'model')
-        const recentMessages = await getRecentMessages(conversationId, 10);
-        
-        // Exclude the message we just added (the last one) from the history since it will be passed to sendMessage
-        const historyForGemini = [];
+        // 5. Build sanitized history for Gemini (strictly alternating user -> model, starting with user)
+        const recentMessages = await getRecentMessages(conversationId, 12);
         const pastMessages = recentMessages.slice(0, -1);
-
+        
+        const historyForGemini = [];
         for (const msg of pastMessages) {
-            if (msg.role === 'user') {
-                historyForGemini.push({
-                    role: 'user',
-                    parts: [{ text: msg.content || '' }]
-                });
-            } else if (msg.role === 'assistant' || msg.role === 'model') {
-                historyForGemini.push({
-                    role: 'model',
-                    parts: [{ text: msg.content || '' }]
-                });
+            const role = (msg.role === 'user') ? 'user' : (msg.role === 'assistant' || msg.role === 'model') ? 'model' : null;
+            if (!role || !msg.content || !msg.content.trim()) continue;
+
+            if (historyForGemini.length === 0) {
+                if (role === 'user') {
+                    historyForGemini.push({ role: 'user', parts: [{ text: msg.content.trim() }] });
+                }
+            } else {
+                const last = historyForGemini[historyForGemini.length - 1];
+                if (last.role === role) {
+                    last.parts[0].text += '\n' + msg.content.trim();
+                } else {
+                    historyForGemini.push({ role, parts: [{ text: msg.content.trim() }] });
+                }
             }
+        }
+
+        // Ensure history ends on 'model' if not empty, so the next sendMessage is 'user'
+        while (historyForGemini.length > 0 && historyForGemini[historyForGemini.length - 1].role === 'user') {
+            historyForGemini.pop();
         }
 
         // 6. Start Gemini Chat Session
@@ -117,16 +124,11 @@ async function processChatMessage({ sessionId, message }) {
                     conversationId
                 });
 
-                functionResponses.push({
-                    functionResponse: {
-                        name: toolName,
-                        response: toolResult
-                    }
-                });
+                // Send tool result back to Gemini in contextual prompt
+                response = await chat.sendMessage(
+                    `[Database Tool Result for '${toolName}']\nData: ${JSON.stringify(toolResult)}\n\nPlease provide a natural, concise, and helpful response to the visitor based on this accurate data.`
+                );
             }
-
-            // Send tool output back to the Gemini model
-            response = await chat.sendMessage(functionResponses);
         }
 
         let assistantText = '';
